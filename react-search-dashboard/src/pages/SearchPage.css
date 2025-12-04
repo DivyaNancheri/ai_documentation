@@ -1,0 +1,16 @@
+.search-page {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.search-page h1 {
+  margin: 0 0 2rem 0;
+  font-size: 2rem;
+  color: #333;
+}
+
+@media (max-width: 768px) {
+  .search-page h1 {
+    font-size: 1.5rem;
+  }
+}
