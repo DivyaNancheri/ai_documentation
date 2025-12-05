@@ -1,0 +1,18 @@
+{
+  "name": "ai-docs",
+  "version": "0.1.0",
+  "description": "CLI to index a React codebase, generate accumulated documentation and publish to Confluence (hooks for LLM)",
+  "type": "module",
+  "bin": {
+    "ai-docs": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node src/index.js --help"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "minimist": "^1.2.8",
+    "dotenv": "^16.1.4"
+  }
+}
