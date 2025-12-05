@@ -13,20 +13,27 @@ const Select = ({
   className = '',
   ...props 
 }) => {
+  const selectId = props.id || `select-${label?.toLowerCase().replace(/\s+/g, '-')}`;
+  const errorId = `${selectId}-error`;
+
   return (
     <div className={`select-group ${className}`}>
       {label && (
-        <label className="select-label">
+        <label className="select-label" htmlFor={selectId}>
           {label}
-          {required && <span className="required">*</span>}
+          {required && <span className="required" aria-label="required">*</span>}
         </label>
       )}
       <select
+        id={selectId}
         value={value}
         onChange={onChange}
         disabled={disabled}
         multiple={multiple}
+        required={required}
         className={`select-field ${error ? 'error' : ''}`}
+        aria-invalid={error ? 'true' : 'false'}
+        aria-describedby={error ? errorId : undefined}
         {...props}
       >
         {!multiple && <option value="">{placeholder}</option>}
@@ -36,7 +43,11 @@ const Select = ({
           </option>
         ))}
       </select>
-      {error && <span className="error-message">{error}</span>}
+      {error && (
+        <span id={errorId} className="error-message" role="alert">
+          {error}
+        </span>
+      )}
     </div>
   );
 };

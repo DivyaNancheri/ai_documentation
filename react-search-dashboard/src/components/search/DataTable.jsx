@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { setSorting, setFilters, updatePagination, executeSearch } from '../../store/slices/searchSlice';
 import { toggleRowSelection, setSelectedRows, clearSelection } from '../../store/slices/tableSlice';
 import Button from '../common/Button';
+import BulkActionBar from './BulkActionBar';
 import './DataTable.css';
 
 const DataTable = () => {
@@ -100,6 +101,8 @@ const DataTable = () => {
           key={i}
           className={`page-number ${i === pagination.currentPage ? 'active' : ''}`}
           onClick={() => handlePageChange(i)}
+          aria-label={`Go to page ${i}`}
+          aria-current={i === pagination.currentPage ? 'page' : undefined}
         >
           {i}
         </button>
@@ -113,28 +116,46 @@ const DataTable = () => {
   }
 
   return (
-    <div className="data-table-container">
+    <div className="data-table-container" role="region" aria-label="Search results">
+      {selectedRows.length > 0 && (
+        <BulkActionBar 
+          selectedCount={selectedRows.length}
+          selectedRows={selectedRows}
+          data={data}
+        />
+      )}
+
       <div className="table-header">
         <div className="table-info">
-          <h3>Search Results ({pagination.totalRecords} records)</h3>
-          {selectedRows.length > 0 && (
-            <span className="selected-info">
-              {selectedRows.length} row(s) selected
-            </span>
-          )}
+          <h3 id="results-title">
+            Search Results 
+            <span className="sr-only">:</span>
+            <span aria-live="polite"> ({pagination.totalRecords} records)</span>
+          </h3>
         </div>
         <div className="table-actions">
-          <Button size="small" variant="outline" onClick={() => setShowColumnManager(!showColumnManager)}>
+          <Button 
+            size="small" 
+            variant="outline" 
+            onClick={() => setShowColumnManager(!showColumnManager)}
+            aria-expanded={showColumnManager}
+            aria-label="Manage table columns"
+          >
             ⚙️ Columns
           </Button>
-          <Button size="small" variant="outline" onClick={handleExport}>
-            📤 Export
+          <Button 
+            size="small" 
+            variant="outline" 
+            onClick={handleExport}
+            aria-label="Export all results to CSV"
+          >
+            📤 Export All
           </Button>
         </div>
       </div>
 
       {showColumnManager && (
-        <div className="column-manager">
+        <div className="column-manager" role="dialog" aria-label="Column visibility settings">
           <h4>Manage Columns</h4>
           <div className="column-list">
             {columns.map(col => (
@@ -143,6 +164,7 @@ const DataTable = () => {
                   type="checkbox"
                   checked={col.visible}
                   onChange={() => dispatch({ type: 'table/toggleColumnVisibility', payload: col.id })}
+                  aria-label={`${col.visible ? 'Hide' : 'Show'} ${col.label} column`}
                 />
                 <span>{col.label}</span>
               </label>
@@ -151,24 +173,41 @@ const DataTable = () => {
         </div>
       )}
 
-      <div className="table-wrapper">
-        <table className="data-table">
+      <div className="table-wrapper" role="region" aria-labelledby="results-title" tabIndex="0">
+        <table className="data-table" role="table" aria-label="Search results table">
           <thead>
-            <tr>
-              <th className="select-column">
+            <tr role="row">
+              <th className="select-column" role="columnheader">
                 <input
                   type="checkbox"
                   onChange={handleSelectAll}
                   checked={selectedRows.length === data.length && data.length > 0}
+                  aria-label={`Select all ${data.length} rows on this page`}
                 />
               </th>
               {visibleColumns.map(column => (
-                <th key={column.id} style={{ width: column.width }}>
+                <th key={column.id} style={{ width: column.width }} role="columnheader" aria-sort={
+                  sorting.field === column.id 
+                    ? (sorting.order === 'asc' ? 'ascending' : 'descending')
+                    : 'none'
+                }>
                   <div className="th-content">
-                    <span onClick={() => column.sortable && handleSort(column.id)} className="th-label">
+                    <span 
+                      onClick={() => column.sortable && handleSort(column.id)} 
+                      className="th-label"
+                      role={column.sortable ? 'button' : undefined}
+                      tabIndex={column.sortable ? 0 : undefined}
+                      onKeyPress={(e) => column.sortable && e.key === 'Enter' && handleSort(column.id)}
+                      aria-label={column.sortable 
+                        ? `${column.label}, ${sorting.field === column.id 
+                            ? `sorted ${sorting.order === 'asc' ? 'ascending' : 'descending'}, click to sort ${sorting.order === 'asc' ? 'descending' : 'ascending'}`
+                            : 'not sorted, click to sort ascending'}`
+                        : column.label
+                      }
+                    >
                       {column.label}
                       {column.sortable && (
-                        <span className="sort-icon">
+                        <span className="sort-icon" aria-hidden="true">
                           {sorting.field === column.id ? (sorting.order === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
                         </span>
                       )}
@@ -181,6 +220,7 @@ const DataTable = () => {
                         value={columnFilters[column.id] || ''}
                         onChange={(e) => handleFilter(column.id, e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && applyFilters()}
+                        aria-label={`Filter ${column.label} column`}
                       />
                     )}
                   </div>
@@ -190,23 +230,29 @@ const DataTable = () => {
           </thead>
           <tbody>
             {data.length === 0 ? (
-              <tr>
-                <td colSpan={visibleColumns.length + 1} className="empty-state">
+              <tr role="row">
+                <td colSpan={visibleColumns.length + 1} className="empty-state" role="cell">
                   No results found. Try adjusting your search criteria.
                 </td>
               </tr>
             ) : (
-              data.map(row => (
-                <tr key={row.id} className={selectedRows.includes(row.id) ? 'selected' : ''}>
-                  <td className="select-column">
+              data.map((row, index) => (
+                <tr 
+                  key={row.id} 
+                  className={selectedRows.includes(row.id) ? 'selected' : ''}
+                  role="row"
+                  aria-selected={selectedRows.includes(row.id)}
+                >
+                  <td className="select-column" role="cell">
                     <input
                       type="checkbox"
                       checked={selectedRows.includes(row.id)}
                       onChange={() => handleRowSelect(row.id)}
+                      aria-label={`Select row ${index + 1}, ${row.name}`}
                     />
                   </td>
                   {visibleColumns.map(column => (
-                    <td key={column.id}>
+                    <td key={column.id} role="cell">
                       {formatValue(column.id, row[column.id])}
                     </td>
                   ))}
@@ -218,11 +264,16 @@ const DataTable = () => {
       </div>
 
       {pagination.totalRecords > 0 && (
-        <div className="table-footer">
+        <div className="table-footer" role="navigation" aria-label="Table pagination">
           <div className="page-size-selector">
-            <label>
+            <label htmlFor="page-size-select">
               Rows per page:
-              <select value={pagination.pageSize} onChange={handlePageSizeChange}>
+              <select 
+                id="page-size-select"
+                value={pagination.pageSize} 
+                onChange={handlePageSizeChange}
+                aria-label="Select number of rows per page"
+              >
                 <option value="10">10</option>
                 <option value="25">25</option>
                 <option value="50">50</option>
@@ -231,15 +282,16 @@ const DataTable = () => {
             </label>
           </div>
 
-          <div className="pagination-info">
+          <div className="pagination-info" aria-live="polite" aria-atomic="true">
             Showing {((pagination.currentPage - 1) * pagination.pageSize) + 1} - {Math.min(pagination.currentPage * pagination.pageSize, pagination.totalRecords)} of {pagination.totalRecords}
           </div>
 
-          <div className="pagination">
+          <div className="pagination" role="group" aria-label="Pagination controls">
             <button
               className="page-btn"
               onClick={() => handlePageChange(1)}
               disabled={pagination.currentPage === 1}
+              aria-label="Go to first page"
             >
               ⏮️
             </button>
@@ -247,6 +299,7 @@ const DataTable = () => {
               className="page-btn"
               onClick={() => handlePageChange(pagination.currentPage - 1)}
               disabled={pagination.currentPage === 1}
+              aria-label="Go to previous page"
             >
               ◀️
             </button>
@@ -255,6 +308,7 @@ const DataTable = () => {
               className="page-btn"
               onClick={() => handlePageChange(pagination.currentPage + 1)}
               disabled={pagination.currentPage === pagination.totalPages}
+              aria-label="Go to next page"
             >
               ▶️
             </button>
@@ -262,6 +316,7 @@ const DataTable = () => {
               className="page-btn"
               onClick={() => handlePageChange(pagination.totalPages)}
               disabled={pagination.currentPage === pagination.totalPages}
+              aria-label="Go to last page"
             >
               ⏭️
             </button>
