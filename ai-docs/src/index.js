@@ -6,6 +6,7 @@ import readline from 'readline';
 import { searchCodebase } from './indexer.js';
 import { generateDocumentation } from './analyzer.js';
 import { publishToConfluence } from './confluence.js';
+import { findReactComponent, generateReactComponentDocumentation } from './react-component-analyzer.js';
 
 function loadDotEnvIfPresent() {
   try {
@@ -58,13 +59,25 @@ async function readUserDocsInteractive() {
 
 async function main() {
   const query = argv.query || argv.q;
+  const component = argv.component || argv.comp;
   const codepath = argv.codepath || argv.c || '../react-search-dashboard';
   const publishFlag = argv.publish || argv.p || false;
   const noPublish = argv['no-publish'] || argv.np || false;
   const docsPaths = argv['docsPaths'] || argv.docs || '';
+  const mode = component ? 'component' : 'search';
 
-  if (!query) {
-    console.log('Usage: node src/index.js --query "search text" [--codepath "../react-search-dashboard"] [--publish] [--docsPaths "path1,path2"] [--no-publish]');
+  if (!query && !component) {
+    console.log('Usage:');
+    console.log('  React Component Analysis:');
+    console.log('    node src/index.js --component "ComponentName" [--codepath "../react-project"]');
+    console.log('');
+    console.log('  General Search:');
+    console.log('    node src/index.js --query "search text" [--codepath "../react-project"]');
+    console.log('');
+    console.log('  Options:');
+    console.log('    --publish, -p         Auto-publish to Confluence');
+    console.log('    --no-publish, --np    Skip publish prompt');
+    console.log('    --docs "path1,path2"  Include additional documentation files');
     process.exit(1);
   }
 
@@ -74,43 +87,94 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Searching in ${absoluteCodepath} for query: "${query}"`);
-  const searchResults = await searchCodebase(absoluteCodepath, query);
-  console.log(`Found matches in ${searchResults.length} files.`);
-
-  let userDocs = [];
-  if (docsPaths && docsPaths.trim()) {
-    const parts = docsPaths.split(',').map(s => s.trim()).filter(Boolean);
-    for (const p of parts) {
-      try {
-        const content = fs.readFileSync(path.resolve(p), 'utf-8');
-        userDocs.push({ path: p, content });
-        console.log(`Loaded document: ${p}`);
-      } catch (e) {
-        console.warn(`Could not read ${p}: ${e.message}`);
-      }
+  let doc;
+  
+  if (mode === 'component') {
+    // React Component Analysis Mode
+    console.log(`🔍 Analyzing React component "${component}" in ${absoluteCodepath}`);
+    const componentResults = await findReactComponent(absoluteCodepath, component);
+    
+    if (componentResults.length === 0) {
+      console.log(`❌ Component "${component}" not found in the codebase.`);
+      console.log('💡 Tips:');
+      console.log('  - Check component name spelling and casing');
+      console.log('  - Ensure the component exists in the specified path');
+      console.log('  - Component might be in a different directory structure');
+      process.exit(1);
     }
+    
+    console.log(`✅ Found ${componentResults.length} file(s) related to "${component}"`);
+    for (const result of componentResults) {
+      console.log(`   📁 ${result.fileName} (${result.components.length} components, ${result.hooks.length} hooks)`);
+    }
+    
+    // Load user docs if provided
+    let userDocs = [];
+    if (docsPaths && docsPaths.trim()) {
+      const parts = docsPaths.split(',').map(s => s.trim()).filter(Boolean);
+      for (const p of parts) {
+        try {
+          const content = fs.readFileSync(path.resolve(p), 'utf-8');
+          userDocs.push({ path: p, content });
+          console.log(`📄 Loaded document: ${p}`);
+        } catch (e) {
+          console.warn(`⚠️  Could not read ${p}: ${e.message}`);
+        }
+      }
+    } else {
+      console.log('📝 No additional documentation files provided');
+      userDocs = []; // Skip interactive prompt for component mode
+    }
+    
+    doc = await generateReactComponentDocumentation({ 
+      componentName: component, 
+      codebasePath: absoluteCodepath, 
+      componentResults, 
+      userDocs 
+    });
+    
   } else {
-    userDocs = await readUserDocsInteractive();
-  }
+    // General Search Mode
+    console.log(`🔍 Searching in ${absoluteCodepath} for query: "${query}"`);
+    const searchResults = await searchCodebase(absoluteCodepath, query);
+    console.log(`Found matches in ${searchResults.length} files.`);
 
-  const doc = await generateDocumentation({ query, searchResults, userDocs, codebasePath: absoluteCodepath });
+    let userDocs = [];
+    if (docsPaths && docsPaths.trim()) {
+      const parts = docsPaths.split(',').map(s => s.trim()).filter(Boolean);
+      for (const p of parts) {
+        try {
+          const content = fs.readFileSync(path.resolve(p), 'utf-8');
+          userDocs.push({ path: p, content });
+          console.log(`Loaded document: ${p}`);
+        } catch (e) {
+          console.warn(`Could not read ${p}: ${e.message}`);
+        }
+      }
+    } else {
+      userDocs = await readUserDocsInteractive();
+    }
+
+    doc = await generateDocumentation({ query, searchResults, userDocs, codebasePath: absoluteCodepath });
+  }
 
   // write output
   const outDir = path.resolve('output');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const outPath = path.join(outDir, `ai-docs-${timestamp}.md`);
+  const prefix = mode === 'component' ? `react-component-${component}` : 'ai-docs';
+  const outPath = path.join(outDir, `${prefix}-${timestamp}.md`);
   fs.writeFileSync(outPath, doc, 'utf-8');
   console.log(`Saved accumulated documentation to ${outPath}`);
 
   // Also save an HTML version (simple wrapper with escaped markdown inside a <pre>)
   const htmlOutDir = outDir;
-  const htmlPath = path.join(htmlOutDir, `ai-docs-${timestamp}.html`);
+  const htmlPath = path.join(htmlOutDir, `${prefix}-${timestamp}.html`);
   function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
-  const htmlContent = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8"/>\n<title>AI Docs - ${timestamp}</title>\n<style>body{font-family:system-ui,Arial,Helvetica,sans-serif;padding:20px}pre{white-space:pre-wrap;word-wrap:break-word;background:#f8f8f8;padding:16px;border-radius:6px}</style>\n</head>\n<body>\n<h1>AI Docs - ${timestamp}</h1>\n<pre>${escapeHtml(doc)}</pre>\n</body>\n</html>`;
+  const title = mode === 'component' ? `React Component: ${component}` : `AI Docs`;
+  const htmlContent = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8"/>\n<title>${title} - ${timestamp}</title>\n<style>body{font-family:system-ui,Arial,Helvetica,sans-serif;padding:20px;max-width:1200px;margin:0 auto}pre{white-space:pre-wrap;word-wrap:break-word;background:#f8f8f8;padding:16px;border-radius:6px;border-left:4px solid #007acc}h1,h2,h3{color:#333}code{background:#f1f1f1;padding:2px 4px;border-radius:3px}</style>\n</head>\n<body>\n<h1>${title} - ${timestamp}</h1>\n<pre>${escapeHtml(doc)}</pre>\n</body>\n</html>`;
   fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
   console.log(`Saved HTML documentation to ${htmlPath}`);
 
@@ -121,15 +185,10 @@ async function main() {
 
   const doPublish = publishFlag || (await ask('Publish to Confluence now? (y/N): '));
   if (doPublish && (doPublish === true || (typeof doPublish === 'string' && doPublish.toLowerCase().startsWith('y')))) {
-    // Use CONFLUENCE_SPACE_KEY from .env by default; do not prompt for it.
-    const envSpace = process.env.CONFLUENCE_SPACE_KEY && process.env.CONFLUENCE_SPACE_KEY.trim();
-    if (!envSpace) {
-      console.error('ERROR: CONFLUENCE_SPACE_KEY not set in environment. Set it in ai-docs/.env before publishing. Skipping publish.');
-      return;
-    }
-    const title = process.env.CONFLUENCE_PAGE_TITLE || (await ask('Confluence page title: '));
+    const space = await ask('Confluence space key (e.g. DOCS): ');
+    const title = await ask('Confluence page title: ');
     try {
-      await publishToConfluence({ space: envSpace, title, content: doc });
+      await publishToConfluence({ space, title, content: doc });
       console.log('Published to Confluence successfully.');
     } catch (e) {
       console.error('Failed to publish to Confluence:', e.message);
