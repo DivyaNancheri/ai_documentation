@@ -15,10 +15,30 @@ function getAuth() {
   return { base, user, token };
 }
 
+function normalizeBaseUrl(raw) {
+  if (!raw) return raw;
+  let out = raw.trim();
+  // ensure protocol
+  if (!out.startsWith('http://') && !out.startsWith('https://')) out = 'https://' + out;
+  // remove trailing slash
+  out = out.replace(/\/$/, '');
+  try {
+    const u = new URL(out);
+    // For Atlassian Cloud instances, API is typically under /wiki
+    if (u.hostname && u.hostname.endsWith('.atlassian.net') && !u.pathname.startsWith('/wiki')) {
+      out = `${u.origin}/wiki`;
+    }
+  } catch (e) {
+    // ignore URL parse errors; return original trimmed value
+  }
+  return out;
+}
+
 
 export async function publishToConfluence({ space, title, content, isHtml = false }) {
-  const { base, user, token } = getAuth();
-  const url = `${base.replace(/\/$/, '')}/rest/api/content`;
+  const { base: rawBase, user, token } = getAuth();
+  const base = normalizeBaseUrl(rawBase);
+  const url = `${base}/rest/api/content`;
   const bodyValue = isHtml ? content : markdownToStorageFormat(content);
   const data = {
     type: 'page',
@@ -63,18 +83,25 @@ export async function publishToConfluence({ space, title, content, isHtml = fals
         continue;
       }
       // For 4xx errors or other permanent failures, break and throw
+      // break and handle below
       break;
     }
   }
 
   // If we reach here, publishing failed after retries
   const friendly = friendlyConfluenceError(lastErr, url);
+  // include server response body when available to aid debugging
+  if (lastErr && lastErr.response && lastErr.response.data) {
+    const body = typeof lastErr.response.data === 'string' ? lastErr.response.data : JSON.stringify(lastErr.response.data);
+    throw new Error(`${friendly} Response body: ${body}`);
+  }
   throw new Error(friendly);
 }
 
 export async function validateConfluenceSpace(spaceKey) {
   const { base, user, token } = getAuth();
-  const url = `${base.replace(/\/$/, '')}/rest/api/space/${encodeURIComponent(spaceKey)}`;
+  const baseNormalized = normalizeBaseUrl(base);
+  const url = `${baseNormalized}/rest/api/space/${encodeURIComponent(spaceKey)}`;
   const timeout = parseInt(process.env.CONFLUENCE_REQUEST_TIMEOUT_MS || '15000', 10);
   const proxyFromEnv = parseProxyEnv();
   const axiosOpts = { auth: { username: user, password: token }, timeout };
@@ -85,7 +112,8 @@ export async function validateConfluenceSpace(spaceKey) {
     return res && res.status === 200;
   } catch (e) {
     if (e.response && e.response.status === 404) {
-      throw new Error(`Confluence space not found (404) for key '${spaceKey}'. Verify CONFLUENCE_SPACE_KEY in .env or use a valid space key.`);
+      // If 404, include helpful advice: check base URL and space key
+      throw new Error(`Confluence space not found (404) for key '${spaceKey}'. Verify CONFLUENCE_SPACE_KEY in .env, that the space exists, and that CONFLUENCE_BASE_URL is correct (include '/wiki' for Atlassian Cloud). Request URL: ${url}`);
     }
     throw new Error(friendlyConfluenceError(e, url));
   }
@@ -115,7 +143,16 @@ function friendlyConfluenceError(err, url) {
     return `Failed to publish to Confluence: DNS lookup failed for ${url}. Verify CONFLUENCE_BASE_URL and network/DNS settings.`;
   }
   if (err.response && err.response.status) {
-    return `Failed to publish to Confluence: HTTP ${err.response.status} - ${err.response.statusText}. Check credentials and space permissions.`;
+    const status = err.response.status;
+    const statusText = err.response.statusText || '';
+    // Provide more guidance for common 4xx errors
+    if (status === 401 || status === 403) {
+      return `Failed to publish to Confluence: HTTP ${status} ${statusText}. Authentication failed or permission denied. Verify CONFLUENCE_USERNAME/CONFLUENCE_API_TOKEN and that the user has permission to create pages in the space.`;
+    }
+    if (status === 404) {
+      return `Failed to publish to Confluence: HTTP 404 Not Found when calling ${url}. Verify CONFLUENCE_BASE_URL (include /wiki for Atlassian Cloud) and that the space key is correct.`;
+    }
+    return `Failed to publish to Confluence: HTTP ${status} - ${statusText}. Check credentials and space permissions.`;
   }
   return `Failed to publish to Confluence: ${err.message || String(err)}.`;
 }

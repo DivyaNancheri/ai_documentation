@@ -179,10 +179,16 @@ async function main() {
     return;
   }
 
-  // Use CONFLUENCE_SPACE_KEY from env if present; do not prompt for space if env provides it.
+  // Use `CONFLUENCE_SPACE_KEY` from env by default and do not prompt for it.
   const envSpace = process.env.CONFLUENCE_SPACE_KEY && process.env.CONFLUENCE_SPACE_KEY.trim();
-  const space = envSpace || (await ask('Confluence space key (e.g. DOCS): '));
-  const title = process.env.CONFLUENCE_PAGE_TITLE || (await ask('Confluence page title: '));
+  const space = envSpace;
+  if (!space) {
+    console.error('ERROR: CONFLUENCE_SPACE_KEY is not set in the environment. Set CONFLUENCE_SPACE_KEY in ai-docs/.env or export it in your shell. Aborting publish.');
+    process.exit(2);
+  }
+
+  // Page title: use env override or default to timestamp-based title
+  const title = process.env.CONFLUENCE_PAGE_TITLE || `AI Docs - ${timestamp}`;
 
   try {
     // Validate space before attempting to publish to provide clearer errors

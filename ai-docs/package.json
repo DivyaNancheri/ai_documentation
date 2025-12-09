@@ -11,8 +11,11 @@
     "test": "node src/index.js --help"
   },
   "dependencies": {
+    "@azure/identity": "latest",
     "axios": "^1.4.0",
+    "dotenv": "^16.1.4",
     "minimist": "^1.2.8",
-    "dotenv": "^16.1.4"
+    "node-fetch": "^3.3.2",
+    "openai": "latest"
   }
 }

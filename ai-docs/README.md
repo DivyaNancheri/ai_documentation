@@ -27,6 +27,10 @@ The CLI will:
 - Produce an accumulated markdown output and save it to `output/ai-docs-<timestamp>.md`
 - Ask whether to publish to Confluence; if you confirm, it will attempt to publish (requires env vars)
 
+Behavior change: snippets removed
+- As of the latest change, generated documents no longer include embedded code snippets or imports by default — the output lists file paths only under `Code References`.
+- If you prefer to include snippets in the document, update the analyzer or re-enable snippet collection in `src/indexer.js` (this is deliberate to keep documentation concise).
+
 Confluence configuration
 
 Set the following environment variables before publishing:
@@ -35,6 +39,16 @@ Set the following environment variables before publishing:
 - `CONFLUENCE_USERNAME` (email) and `CONFLUENCE_API_TOKEN`
 
 The publishing logic uses the Confluence REST API. See `src/confluence.js` for implementation details.
+
+Azure OpenAI
+
+If you use Azure OpenAI, set the following environment variables instead of `OPENAI_API_KEY`:
+
+- `AZURE_OPENAI_ENDPOINT` e.g. `https://<resource>.openai.azure.com`
+- `AZURE_OPENAI_API_KEY`
+- `AZURE_OPENAI_DEPLOYMENT` (the deployment name for your model)
+
+The tool will automatically prefer Azure OpenAI when these variables are present.
 
 Notes & next steps
 

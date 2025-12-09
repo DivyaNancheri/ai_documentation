@@ -121,10 +121,15 @@ async function main() {
 
   const doPublish = publishFlag || (await ask('Publish to Confluence now? (y/N): '));
   if (doPublish && (doPublish === true || (typeof doPublish === 'string' && doPublish.toLowerCase().startsWith('y')))) {
-    const space = await ask('Confluence space key (e.g. DOCS): ');
-    const title = await ask('Confluence page title: ');
+    // Use CONFLUENCE_SPACE_KEY from .env by default; do not prompt for it.
+    const envSpace = process.env.CONFLUENCE_SPACE_KEY && process.env.CONFLUENCE_SPACE_KEY.trim();
+    if (!envSpace) {
+      console.error('ERROR: CONFLUENCE_SPACE_KEY not set in environment. Set it in ai-docs/.env before publishing. Skipping publish.');
+      return;
+    }
+    const title = process.env.CONFLUENCE_PAGE_TITLE || (await ask('Confluence page title: '));
     try {
-      await publishToConfluence({ space, title, content: doc });
+      await publishToConfluence({ space: envSpace, title, content: doc });
       console.log('Published to Confluence successfully.');
     } catch (e) {
       console.error('Failed to publish to Confluence:', e.message);
