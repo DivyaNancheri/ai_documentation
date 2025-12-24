@@ -1,6 +1,12 @@
 import { summarizeWithLLM } from './llm.js';
+import { generateBusinessDocumentation } from './business-doc-generator.js';
 
 export async function generateDocumentation({ query, searchResults, userDocs = [], codebasePath }) {
+  // Use the new business-focused generator
+  return await generateBusinessDocumentation({ query, searchResults, userDocs, codebasePath });
+}
+
+export async function generateDocumentationLegacy({ query, searchResults, userDocs = [], codebasePath }) {
   const lines = [];
   const ts = new Date().toISOString();
 
