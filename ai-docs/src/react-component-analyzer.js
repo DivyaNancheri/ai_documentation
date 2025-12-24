@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { summarizeWithLLM } from './llm.js';
+import { generateBusinessDocumentation } from './business-doc-generator.js';
 import { generateComponentInterface, generateUsageGuidelines, generateImplementationSummary } from './component-interface-generator.js';
 
 const REACT_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx']);
@@ -152,7 +153,7 @@ function analyzeReactFile(content, filePath, targetComponent) {
 }
 
 /**
- * Generate comprehensive React component documentation
+ * Generate comprehensive React component documentation using business-focused approach
  */
 export async function generateReactComponentDocumentation({ 
   componentName, 
@@ -160,113 +161,20 @@ export async function generateReactComponentDocumentation({
   componentResults, 
   userDocs = [] 
 }) {
-  const timestamp = new Date().toISOString();
-  const lines = [];
+  // Convert componentResults to searchResults format for compatibility
+  const searchResults = componentResults.map(result => ({
+    path: result.path,
+    snippets: [{ context: `Component: ${result.components.map(c => c.name).join(', ')}` }]
+  }));
   
-  // Header with component-specific title
-  lines.push(`# React Component Documentation: ${componentName}`);
-  lines.push('');
-  lines.push(`**Component:** ${componentName}`);
-  lines.push(`**Codebase:** ${codebasePath}`);
-  lines.push(`**Generated:** ${timestamp}`);
-  lines.push(`**Analysis Type:** Industry-Standard Technical Documentation`);
-  lines.push('');
-  lines.push('---');
-  lines.push('');
-  
-  // Executive Summary
-  lines.push('## Executive Summary');
-  lines.push('');
-  lines.push(`This document provides comprehensive technical documentation for the **${componentName}** React component, including architecture analysis, API specifications, usage guidelines, and testing recommendations.`);
-  lines.push('');
-  
-  // Component Overview
-  lines.push('## Component Overview');
-  lines.push('');
-  
-  if (componentResults.length === 0) {
-    lines.push(`❌ **Component "${componentName}" not found in the codebase.**`);
-    lines.push('');
-    lines.push('**Possible reasons:**');
-    lines.push('- Component name spelling or casing mismatch');
-    lines.push('- Component exists in excluded directories');
-    lines.push('- Component is dynamically imported or generated');
-    lines.push('');
-    return lines.join('\n');
-  }
-  
-  // Found components summary
-  lines.push(`✅ **Found ${componentResults.length} file(s) related to "${componentName}"**`);
-  lines.push('');
-  
-  for (const result of componentResults) {
-    lines.push(`### 📁 ${result.fileName}`);
-    lines.push(`**Path:** \`${result.path}\``);
-    lines.push(`**Components:** ${result.components.map(c => `${c.name} (${c.type})`).join(', ') || 'None detected'}`);
-    lines.push(`**Hooks:** ${result.hooks.length} hook(s)`);
-    lines.push(`**Props:** ${result.props.length} prop(s)`);
-    lines.push('');
-  }
-  
-  // AI-Powered Analysis
-  const hasLLMConfig = process.env.OPENAI_API_KEY || 
-    (process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY && process.env.AZURE_OPENAI_DEPLOYMENT_NAME);
-  
-  if (hasLLMConfig) {
-    console.log('🤖 Starting AI-powered React component analysis...');
-    
-    try {
-      const analysisPrompt = buildComponentAnalysisPrompt(componentName, componentResults, codebasePath);
-      console.log(`📝 Analysis prompt: ${analysisPrompt.length} characters`);
-      
-      const aiAnalysis = await summarizeWithLLM({
-        userPrompt: analysisPrompt,
-        systemPrompt: `You are a Senior React Developer and Technical Writer specializing in component architecture and API documentation. Create comprehensive, industry-standard technical documentation for React components that follows best practices and provides actionable insights for developers.`
-      });
-      
-      if (aiAnalysis && aiAnalysis.trim()) {
-        lines.push('## 🤖 AI-Powered Technical Analysis');
-        lines.push('');
-        lines.push(aiAnalysis.trim());
-        lines.push('');
-        console.log('✅ AI analysis completed successfully');
-      } else {
-        lines.push('## ⚠️ AI Analysis Unavailable');
-        lines.push('');
-        lines.push('AI analysis could not be generated. Proceeding with static analysis...');
-        lines.push('');
-      }
-    } catch (error) {
-      console.error('❌ AI analysis failed:', error.message);
-      lines.push('## ⚠️ AI Analysis Error');
-      lines.push('');
-      lines.push(`AI analysis failed: ${error.message}`);
-      lines.push('');
-    }
-  }
-  
-  // Business-focused analysis sections
-  lines.push('## Component Architecture');
-  lines.push('');
-  generateArchitectureSection(lines, componentResults);
-  
-  lines.push('## Dependencies & Integrations');
-  lines.push('');
-  generateDependenciesSection(lines, componentResults);
-  
-  lines.push('## Component Interface');
-  lines.push('');
-  generateComponentInterface(lines, componentResults);
-  
-  lines.push('## Usage & Integration');
-  lines.push('');
-  generateUsageGuidelines(lines, componentResults, componentName);
-  
-  lines.push('## Implementation Summary');
-  lines.push('');
-  generateImplementationSummary(lines, componentResults);
-  
-  return lines.join('\n');
+  // Use the new business-focused documentation generator
+  return await generateBusinessDocumentation({ 
+    query: componentName, 
+    searchResults, 
+    userDocs, 
+    codebasePath, 
+    componentName 
+  });
 }
 
 function buildComponentAnalysisPrompt(componentName, componentResults, codebasePath) {
